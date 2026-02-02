@@ -32,16 +32,21 @@ struct Cell
 };
 
 std::vector<Particle> particles;
-std::vector<Cell> cells;
+std::vector<Cell> grid;
 
 // SDL
 void InitializeSDL();
 void Shutdown();
 void Render();
 
+// MLS-MPM
+void InitializeMlsMpm();
+void EachSimulationStep();
+
 int main(int argc, char* argv[])
 {
     InitializeSDL();
+    InitializeMlsMpm();
 
     auto mainLoop = []()
     {
@@ -74,6 +79,7 @@ int main(int argc, char* argv[])
             isRunning = false;
         }
 
+        EachSimulationStep();
         Render();
     };
 
@@ -131,4 +137,67 @@ void Render()
     SDL_RenderClear(renderer);
     filledCircleRGBA(renderer, WINDOW_SIZE / 2, WINDOW_SIZE / 2, 100, 0, 0, 255, 255);
     SDL_RenderPresent(renderer);
+}
+
+void InitializeMlsMpm()
+{
+    // 1.  initialise your grid - fill your grid array with (grid_res * grid_res) cells.
+
+    // 2. create a bunch of particles. set their positions somewhere in your simulation domain.
+    // initialise their deformation gradients to the identity matrix, as they're in their undeformed state.
+
+    // 3. optionally precompute state variables e.g. particle initial volume, if your model calls for it
+}
+
+void EachSimulationStep()
+{
+    // 1. reset our scratch-pad grid completely
+    for (auto& cell : grid)
+    {
+        // zero out mass and velocity for this cell
+    }
+
+    // 2. particle-to-grid (P2G).
+    // goal: transfers data from particles to our grid
+    for (auto& p : particles)
+    {
+        // 2.1: calculate weights for the 3x3 neighbouring cells surrounding the particle's position
+        // on the grid using an interpolation function
+
+        // 2.2: calculate quantities like e.g. stress based on constitutive equation
+
+        // 2.3:
+        for (auto& cell : particleNeighborhood)
+        {
+            // scatter our particle's momentum to the grid, using the cell's interpolation weight calculated in 2.1
+        }
+    }
+
+    // 3. calculate grid velocities
+    for (auto& cell : grid)
+    {
+        // 3.1: calculate grid velocity based on momentum found in the P2G stage
+
+        // 3.2: enforce boundary conditions
+    }
+
+    // 4. grid-to-particle (G2P).
+    // goal: report our grid's findings back to our particles, and integrate their position + velocity forward
+    for (auto& p : particles)
+    {
+        // 4.1: update particle's deformation gradient using MLS-MPM's velocity gradient estimate
+        // Reference: MLS-MPM paper, Eq. 17
+
+        // 4.2: calculate neighbouring cell weights as in step 2.1.
+        // note: our particle's haven't moved on the grid at all by this point, so the weights will be identical
+
+        // 4.3: calculate our new particle velocities
+        for (auto& cell : particleNeighborhood)
+        {
+            // 4.3.1:
+            // get this cell's weighted contribution to our particle's new velocity
+        }
+
+        // 4.4: advect particle positions by their velocity
+    }
 }
