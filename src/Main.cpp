@@ -3,6 +3,8 @@
 
 #include <glm/glm.hpp>
 
+#include <vector>
+
 #ifdef __EMSCRIPTEN__
     #include <emscripten.h>
     #include <emscripten/html5.h>
@@ -29,35 +31,17 @@ struct Cell
     float mass;
 };
 
+std::vector<Particle> particles;
+std::vector<Cell> cells;
+
+// SDL
+void InitializeSDL();
 void Shutdown();
+void Render();
 
 int main(int argc, char* argv[])
 {
-    int sdlResult = SDL_Init(SDL_INIT_VIDEO);
-    if (sdlResult != 0)
-    {
-        SDL_Log("Failed to initialize SDL: %s", SDL_GetError());
-        return 1;
-    }
-
-    window = SDL_CreateWindow("MLS-MPM Sample",
-                              SDL_WINDOWPOS_UNDEFINED,
-                              SDL_WINDOWPOS_UNDEFINED,
-                              WINDOW_SIZE,
-                              WINDOW_SIZE,
-                              0);
-    if (!window)
-    {
-        SDL_Log("Failed to create window: %s", SDL_GetError());
-        return 1;
-    }
-
-    renderer = SDL_CreateRenderer(window, -1, 0);
-    if (!renderer)
-    {
-        SDL_Log("Failed to create renderer: %s", SDL_GetError());
-        return 1;
-    }
+    InitializeSDL();
 
     auto mainLoop = []()
     {
@@ -90,10 +74,7 @@ int main(int argc, char* argv[])
             isRunning = false;
         }
 
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-        SDL_RenderClear(renderer);
-        filledCircleRGBA(renderer, WINDOW_SIZE / 2, WINDOW_SIZE / 2, 100, 0, 0, 255, 255);
-        SDL_RenderPresent(renderer);
+        Render();
     };
 
 #ifdef __EMSCRIPTEN__
@@ -109,8 +90,45 @@ int main(int argc, char* argv[])
     return 0;
 }
 
+void InitializeSDL()
+{
+    int sdlResult = SDL_Init(SDL_INIT_VIDEO);
+    if (sdlResult != 0)
+    {
+        SDL_Log("Failed to initialize SDL: %s", SDL_GetError());
+        exit(1);
+    }
+
+    window = SDL_CreateWindow("MLS-MPM Sample",
+                              SDL_WINDOWPOS_UNDEFINED,
+                              SDL_WINDOWPOS_UNDEFINED,
+                              WINDOW_SIZE,
+                              WINDOW_SIZE,
+                              0);
+    if (!window)
+    {
+        SDL_Log("Failed to create window: %s", SDL_GetError());
+        exit(1);
+    }
+
+    renderer = SDL_CreateRenderer(window, -1, 0);
+    if (!renderer)
+    {
+        SDL_Log("Failed to create renderer: %s", SDL_GetError());
+        exit(1);
+    }
+}
+
 void Shutdown()
 {
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
+}
+
+void Render()
+{
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderClear(renderer);
+    filledCircleRGBA(renderer, WINDOW_SIZE / 2, WINDOW_SIZE / 2, 100, 0, 0, 255, 255);
+    SDL_RenderPresent(renderer);
 }
