@@ -225,5 +225,129 @@ void AddObject(const glm::vec2& center, uint32_t color)
 
 void Advance(float dt)
 {
-    // TODO
+    // Reset grid
+    std::memset(grid, 0, sizeof(grid));
+
+    // P2G
+    for (auto& p : particles)
+    {
+        // element-wise floor
+        glm::vec2 base_coord = p.x * inv_dx - glm::vec2(0.5f);
+        glm::ivec2 ibase_coord((int)base_coord.x, (int)base_coord.y);
+
+        glm::vec2 fx = p.x * inv_dx - base_coord;
+
+        // Quadratic kernels [http://mpm.graphics Eqn. 123, with x=fx, fx-1,fx-2]
+        glm::vec2 w[3] = {
+            glm::vec2(0.5f) * glm::sqrt(glm::vec2(1.5f) - fx),
+            glm::vec2(0.75f) - glm::sqrt(fx - glm::vec2(1.0f)),
+            glm::vec2(0.5f) * glm::sqrt(fx - glm::vec2(0.5f)),
+        };
+
+        // Compute current Lamé parameters [http://mpm.graphics Eqn. 86]
+        auto e      = std::exp(hardening * (1.0f - p.Jp));
+        auto mu     = mu_0 * e;
+        auto lambda = lambda_0 * e;
+
+        // current volume
+        float J = glm::determinant(p.F);
+
+        // TODO: Polar decomposition for fixed corotated model
+        glm::mat2 r, s;
+
+        // [http://mpm.graphics Paragraph after Eqn. 176]
+        float Dinv = 4 * inv_dx * inv_dx;
+        // [http://mpm.graphics Eqn. 52]
+        auto PF = (2 * mu * (p.F - r) * glm::transpose(p.F) + lambda * (J - 1) * J);
+
+        // Cauchy stress times dt and inv_dx
+        auto stress = -(dt * vol) * (Dinv * PF);
+
+        // Fused APIC momentum + MLS-MPM stress contribution
+        // See http://taichi.graphics/wp-content/uploads/2019/03/mls-mpm-cpic.pdf
+        // Eqn 29
+        auto affine = stress + particle_mass * p.C;
+
+        // P2G
+        for (int i = 0; i < 3; i++)
+        {
+            for (int j = 0; j < 3; j++)
+            {
+                auto dpos = (glm::vec2(i, j) - fx) * dx;
+                // Translational momentum
+                glm::vec3 mass_x_velocity(p.v * particle_mass, particle_mass);
+                grid[ibase_coord.x + i][ibase_coord.y + j] +=
+                    (w[i].x * w[j].y * (mass_x_velocity + glm::vec3(affine * dpos, 0)));
+            }
+        }
+    }
+
+    // For all grid nodes
+    for (int i = 0; i <= n; i++)
+    {
+        for (int j = 0; j <= n; j++)
+        {
+            auto& g = grid[i][j];
+            // No need for epsilon here
+            if (g[2] > 0)
+            {
+                // Normalize by mass
+                g /= g[2];
+                // Gravity
+                g += dt * glm::vec3(0, -200, 0);
+
+                // boundary thickness
+                float boundary = 0.05;
+                // Node coordinates
+                float x = (float)i / n;
+                float y = float(j) / n;
+
+                // Sticky boundary
+                if (x < boundary || x > 1 - boundary || y > 1 - boundary)
+                {
+                    g = glm::vec3(0);
+                }
+                // Separate boundary
+                if (y < boundary)
+                {
+                    g[1] = std::max(0.0f, g[1]);
+                }
+            }
+        }
+    }
+
+    // G2P
+    for (auto& p : particles)
+    {
+        // element-wise floor
+        glm::vec2 base_coord = (p.x * inv_dx - glm::vec2(0.5f));
+        glm::ivec2 ibase_coord((int)base_coord.x, (int)base_coord.y);
+        glm::vec2 fx   = p.x * inv_dx - base_coord;
+        glm::vec2 w[3] = {glm::vec2(0.5) * glm::sqrt(glm::vec2(1.5) - fx),
+                          glm::vec2(0.75) - glm::sqrt(fx - glm::vec2(1.0)),
+                          glm::vec2(0.5) * glm::sqrt(fx - glm::vec2(0.5))};
+
+        p.C = glm::mat2(0);
+        p.v = glm::vec2(0);
+
+        for (int i = 0; i < 3; i++)
+        {
+            for (int j = 0; j < 3; j++)
+            {
+                glm::vec2 dpos   = glm::vec2(i, j) - fx;
+                glm::vec2 grid_v = glm::vec2(grid[ibase_coord.x + i][ibase_coord.y + j]);
+                auto weight      = w[i].x * w[j].y;
+                // Velocity
+                p.v += weight * grid_v;
+                // APIC C
+                p.C += 4 * inv_dx
+                       * glm::cross(glm::vec3(weight * grid_v, 0.0f), glm::vec3(dpos, 0.0f)).z;
+            }
+        }
+
+        // Advection
+        p.x += dt * p.v;
+
+        // TODO: MLS-MPM F-update
+    }
 }
