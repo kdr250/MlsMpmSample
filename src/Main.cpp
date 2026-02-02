@@ -1,6 +1,8 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL2_gfxPrimitives.h>
 
+#include <glm/glm.hpp>
+
 #ifdef __EMSCRIPTEN__
     #include <emscripten.h>
     #include <emscripten/html5.h>
@@ -12,6 +14,20 @@ static constexpr int WINDOW_SIZE = 800;
 SDL_Window* window     = nullptr;
 SDL_Renderer* renderer = nullptr;
 bool isRunning         = true;
+
+// MLS-MPM
+struct Particle
+{
+    glm::vec2 x;  // position
+    glm::vec2 v;  // velocity
+    float mass;
+};
+
+struct Cell
+{
+    glm::vec2 v;  // velocity
+    float mass;
+};
 
 void Shutdown();
 
