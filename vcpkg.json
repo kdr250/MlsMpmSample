@@ -8,6 +8,7 @@
         {
             "name": "sdl2-gfx",
             "platform": "!wasm32"
-        }
+        },
+        "glm"
     ]
 }

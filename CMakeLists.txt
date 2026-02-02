@@ -25,6 +25,8 @@ else()
     find_package(sdl2-gfx CONFIG REQUIRED)
 endif()
 
+find_package(glm CONFIG REQUIRED)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED true)
 
@@ -44,6 +46,11 @@ if (EMSCRIPTEN)
     set(USE_FLAGS "-s USE_SDL=2 -s USE_SDL_GFX=2 -s ALLOW_MEMORY_GROWTH --preload-file resources/")
     set(CMAKE_CXX_FLAGS ${USE_FLAGS})
 
+    target_link_libraries(
+        main PRIVATE
+        glm::glm
+    )
+
     set_target_properties(main PROPERTIES SUFFIX ".html")
 
     file(COPY ${PROJECT_SOURCE_DIR}/resources DESTINATION ${CMAKE_BINARY_DIR})
@@ -55,6 +62,7 @@ else()
         $<TARGET_NAME_IF_EXISTS:SDL2::SDL2main>
         $<IF:$<TARGET_EXISTS:SDL2::SDL2>,SDL2::SDL2,SDL2::SDL2-static>
         SDL2::SDL2_gfx
+        glm::glm
     )
 
     add_custom_command(
