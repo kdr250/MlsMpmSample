@@ -4,6 +4,7 @@
 #include <glm/glm.hpp>
 
 #include <vector>
+#include <random>
 
 #ifdef __EMSCRIPTEN__
     #include <emscripten.h>
@@ -18,30 +19,62 @@ SDL_Renderer* renderer = nullptr;
 bool isRunning         = true;
 
 // MLS-MPM
+// Grid resolution (cells)
+const int n = 80;
+
+const float dt       = 1e-4f;
+const float frame_dt = 1e-3f;
+const float dx       = 1.0f / n;
+const float inv_dx   = 1.0f / dx;
+
+// Snow material properties
+const auto particle_mass = 1.0f;
+const auto vol           = 1.0f;   // Particle Volume
+const auto hardening     = 10.0f;  // Snow hardening factor
+const auto E             = 1e4f;   // Young's Modulus
+const auto nu            = 0.2f;   // Poisson ratio
+const bool plastic       = true;
+
+// Initial Lamé parameters
+const float mu_0     = E / (2 * (1 + nu));
+const float lambda_0 = E * nu / ((1 + nu) * (1 - 2 * nu));
+
 struct Particle
 {
-    glm::vec2 x;  // position
-    glm::vec2 v;  // velocity
-    float mass;
-};
+    // Position and velocity
+    glm::vec2 x, v;
+    // Deformation gradient
+    glm::mat2 F;
+    // Affine momentum from APIC
+    glm::mat2 C;
+    // Determinant of the deformation gradient (i.e. volume)
+    float Jp;
+    // Color
+    uint32_t c;
 
-struct Cell
-{
-    glm::vec2 v;  // velocity
-    float mass;
+    Particle(glm::vec2 x, uint32_t c, glm::vec2 v = glm::vec2(0)) :
+        x(x), v(v), F(1), C(0), Jp(1), c(c)
+    {
+    }
 };
 
 std::vector<Particle> particles;
-std::vector<Cell> grid;
+glm::vec3 grid[n + 1][n + 1];
 
 // SDL
 void InitializeSDL();
 void Shutdown();
 void Render();
+glm::vec2 ZOToSDLPosition(const glm::vec2& zeroToOnePosition);
+SDL_Color ToSDLColor(uint32_t color);
+
+float Random();
+glm::vec2 RandomVec();
 
 // MLS-MPM
 void InitializeMlsMpm();
-void EachSimulationStep();
+void AddObject(const glm::vec2& center, uint32_t color);
+void Advance(float dt);
 
 int main(int argc, char* argv[])
 {
@@ -79,7 +112,7 @@ int main(int argc, char* argv[])
             isRunning = false;
         }
 
-        EachSimulationStep();
+        Advance(dt);
         Render();
     };
 
@@ -135,69 +168,62 @@ void Render()
 {
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
-    filledCircleRGBA(renderer, WINDOW_SIZE / 2, WINDOW_SIZE / 2, 100, 0, 0, 255, 255);
+    for (auto& particle : particles)
+    {
+        auto screenPos = ZOToSDLPosition(particle.x);
+        auto color     = ToSDLColor(particle.c);
+        filledCircleRGBA(renderer, screenPos.x, screenPos.y, 1, color.r, color.g, color.b, color.a);
+    }
     SDL_RenderPresent(renderer);
+}
+
+glm::vec2 ZOToSDLPosition(const glm::vec2& zeroToOnePosition)
+{
+    glm::vec2 result = zeroToOnePosition;
+    result.y         = 1.0f - result.y;
+
+    return result * (float)WINDOW_SIZE;
+}
+
+SDL_Color ToSDLColor(uint32_t color)
+{
+    return SDL_Color {(Uint8)((color >> 24) & 0xFF),
+                      (Uint8)((color >> 16) & 0xFF),
+                      (Uint8)((color >> 8) & 0xFF),
+                      (Uint8)(color & 0xFF)};
+}
+
+float Random()
+{
+    static std::random_device device;
+    static std::mt19937_64 generator(device());
+    static std::uniform_real_distribution<float> distribution(0.0f, 1.0f);
+    return distribution(generator);
+}
+
+glm::vec2 RandomVec()
+{
+    return glm::vec2(Random(), Random());
 }
 
 void InitializeMlsMpm()
 {
-    // 1.  initialise your grid - fill your grid array with (grid_res * grid_res) cells.
-
-    // 2. create a bunch of particles. set their positions somewhere in your simulation domain.
-    // initialise their deformation gradients to the identity matrix, as they're in their undeformed state.
-
-    // 3. optionally precompute state variables e.g. particle initial volume, if your model calls for it
+    AddObject(glm::vec2(0.55, 0.45), 0xFF0000FF);
+    AddObject(glm::vec2(0.45, 0.65), 0x00FF00FF);
+    AddObject(glm::vec2(0.55, 0.85), 0x0000FFFF);
 }
 
-void EachSimulationStep()
+void AddObject(const glm::vec2& center, uint32_t color)
 {
-    // 1. reset our scratch-pad grid completely
-    for (auto& cell : grid)
+    // Randomly sample 1000 particles in the square
+    for (int i = 0; i < 1000; ++i)
     {
-        // zero out mass and velocity for this cell
+        particles.push_back(
+            Particle {(RandomVec() * 2.0f - glm::vec2(1.0f)) * 0.08f + center, color});
     }
+}
 
-    // 2. particle-to-grid (P2G).
-    // goal: transfers data from particles to our grid
-    for (auto& p : particles)
-    {
-        // 2.1: calculate weights for the 3x3 neighbouring cells surrounding the particle's position
-        // on the grid using an interpolation function
-
-        // 2.2: calculate quantities like e.g. stress based on constitutive equation
-
-        // 2.3:
-        for (auto& cell : particleNeighborhood)
-        {
-            // scatter our particle's momentum to the grid, using the cell's interpolation weight calculated in 2.1
-        }
-    }
-
-    // 3. calculate grid velocities
-    for (auto& cell : grid)
-    {
-        // 3.1: calculate grid velocity based on momentum found in the P2G stage
-
-        // 3.2: enforce boundary conditions
-    }
-
-    // 4. grid-to-particle (G2P).
-    // goal: report our grid's findings back to our particles, and integrate their position + velocity forward
-    for (auto& p : particles)
-    {
-        // 4.1: update particle's deformation gradient using MLS-MPM's velocity gradient estimate
-        // Reference: MLS-MPM paper, Eq. 17
-
-        // 4.2: calculate neighbouring cell weights as in step 2.1.
-        // note: our particle's haven't moved on the grid at all by this point, so the weights will be identical
-
-        // 4.3: calculate our new particle velocities
-        for (auto& cell : particleNeighborhood)
-        {
-            // 4.3.1:
-            // get this cell's weighted contribution to our particle's new velocity
-        }
-
-        // 4.4: advect particle positions by their velocity
-    }
+void Advance(float dt)
+{
+    // TODO
 }
