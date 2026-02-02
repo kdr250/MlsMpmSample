@@ -6,9 +6,9 @@
     #include <emscripten/html5.h>
 #endif
 
-static constexpr int WINDOW_WIDTH  = 1024;
-static constexpr int WINDOW_HEIGHT = 768;
+static constexpr int WINDOW_SIZE = 800;
 
+// SDL
 SDL_Window* window     = nullptr;
 SDL_Renderer* renderer = nullptr;
 bool isRunning         = true;
@@ -27,8 +27,8 @@ int main(int argc, char* argv[])
     window = SDL_CreateWindow("MLS-MPM Sample",
                               SDL_WINDOWPOS_UNDEFINED,
                               SDL_WINDOWPOS_UNDEFINED,
-                              WINDOW_WIDTH,
-                              WINDOW_HEIGHT,
+                              WINDOW_SIZE,
+                              WINDOW_SIZE,
                               0);
     if (!window)
     {
@@ -76,7 +76,7 @@ int main(int argc, char* argv[])
 
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
-        filledCircleRGBA(renderer, WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2, 100, 0, 0, 255, 255);
+        filledCircleRGBA(renderer, WINDOW_SIZE / 2, WINDOW_SIZE / 2, 100, 0, 0, 255, 255);
         SDL_RenderPresent(renderer);
     };
 
