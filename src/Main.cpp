@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <vector>
 #include <random>
+#include <iostream>
 
 #ifdef __EMSCRIPTEN__
     #include <emscripten.h>
@@ -54,7 +55,7 @@ struct Particle
     uint32_t c;
 
     Particle(glm::vec2 x, uint32_t c, glm::vec2 v = glm::vec2(0)) :
-        x(x), v(v), F(1), C(0), Jp(1), c(c)
+        x(x), v(v), F(1, 1, 1, 1), C(0), Jp(1), c(c)
     {
     }
 };
@@ -214,6 +215,12 @@ void InitializeMlsMpm()
     AddObject(glm::vec2(0.55, 0.45), 0xFF0000FF);
     AddObject(glm::vec2(0.45, 0.65), 0x00FF00FF);
     AddObject(glm::vec2(0.55, 0.85), 0x0000FFFF);
+
+    for (int i = 0; i < particles.size(); ++i)
+    {
+        auto& p = particles[i];
+        std::cout << "particle " << i << ": { " << p.x.x << ", " << p.x.y << " }" << std::endl;
+    }
 }
 
 void AddObject(const glm::vec2& center, uint32_t color)
@@ -235,16 +242,16 @@ void Advance(float dt)
     for (auto& p : particles)
     {
         // element-wise floor
-        glm::vec2 base_coord = p.x * inv_dx - glm::vec2(0.5f);
-        glm::ivec2 ibase_coord((int)base_coord.x, (int)base_coord.y);
+        glm::ivec2 ibase_coord = p.x * inv_dx - glm::vec2(0.5f);
+        glm::vec2 base_coord((float)ibase_coord.x, (float)ibase_coord.y);
 
         glm::vec2 fx = p.x * inv_dx - base_coord;
 
         // Quadratic kernels [http://mpm.graphics Eqn. 123, with x=fx, fx-1,fx-2]
         glm::vec2 w[3] = {
-            glm::vec2(0.5f) * glm::sqrt(glm::vec2(1.5f) - fx),
-            glm::vec2(0.75f) - glm::sqrt(fx - glm::vec2(1.0f)),
-            glm::vec2(0.5f) * glm::sqrt(fx - glm::vec2(0.5f)),
+            glm::vec2(0.5f) * glm::pow(glm::vec2(1.5f) - fx, glm::vec2(2.0f)),
+            glm::vec2(0.75f) - glm::pow(fx - glm::vec2(1.0f), glm::vec2(2.0f)),
+            glm::vec2(0.5f) * glm::pow(fx - glm::vec2(0.5f), glm::vec2(2.0f)),
         };
 
         // Compute current Lamé parameters [http://mpm.graphics Eqn. 86]
@@ -256,7 +263,7 @@ void Advance(float dt)
         float J = glm::determinant(p.F);
 
         // Polar decomposition for fixed corotated model
-        glm::mat2 r, s;
+        glm::mat2 r(0.0f), s(0.0f);
         PolarDecomp(p.F, r, s);
 
         // [http://mpm.graphics Paragraph after Eqn. 176]
@@ -324,8 +331,8 @@ void Advance(float dt)
     for (auto& p : particles)
     {
         // element-wise floor
-        glm::vec2 base_coord = (p.x * inv_dx - glm::vec2(0.5f));
-        glm::ivec2 ibase_coord((int)base_coord.x, (int)base_coord.y);
+        glm::ivec2 ibase_coord = (p.x * inv_dx - glm::vec2(0.5f));
+        glm::vec2 base_coord((float)ibase_coord.x, (float)ibase_coord.y);
         glm::vec2 fx   = p.x * inv_dx - base_coord;
         glm::vec2 w[3] = {glm::vec2(0.5) * glm::sqrt(glm::vec2(1.5) - fx),
                           glm::vec2(0.75) - glm::sqrt(fx - glm::vec2(1.0)),
@@ -344,8 +351,7 @@ void Advance(float dt)
                 // Velocity
                 p.v += weight * grid_v;
                 // APIC C
-                p.C += 4 * inv_dx
-                       * glm::cross(glm::vec3(weight * grid_v, 0.0f), glm::vec3(dpos, 0.0f)).z;
+                p.C += 4 * inv_dx * glm::outerProduct(weight * grid_v, dpos);
             }
         }
 
@@ -353,9 +359,9 @@ void Advance(float dt)
         p.x += dt * p.v;
 
         // MLS-MPM F-update
-        auto F = (glm::mat2(1) + dt * p.C) * p.F;
+        auto F = (glm::mat2(1, 1, 1, 1) + dt * p.C) * p.F;
 
-        glm::mat2 svd_u, sig, svd_v;
+        glm::mat2 svd_u(0.0f), sig(0.0f), svd_v(0.0f);
         SVD(F, svd_u, sig, svd_v);
 
         // Snow Plasticity
@@ -372,28 +378,34 @@ void Advance(float dt)
         p.Jp = Jp_new;
         p.F  = F;
     }
+
+    for (int i = 0; i < particles.size(); ++i)
+    {
+        auto& p = particles[i];
+        std::cout << "particle " << i << ": { " << p.x.x << ", " << p.x.y << " }" << std::endl;
+    }
 }
 
 void PolarDecomp(glm::mat2 m, glm::mat2& R, glm::mat2& S)
 {
     auto x     = m[0][0] + m[1][1];
-    auto y     = m[1][0] - m[0][1];
+    auto y     = m[0][1] - m[1][0];
     auto scale = 1.0f / std::sqrt(x * x + y * y);
     float c    = x * scale;
     float s    = y * scale;
     R[0][0]    = c;
-    R[0][1]    = -s;
-    R[1][0]    = s;
+    R[1][0]    = -s;
+    R[0][1]    = s;
     R[1][1]    = c;
     S          = glm::transpose(R) * m;
 }
 
 void SVD(glm::mat2 m, glm::mat2& U, glm::mat2& sig, glm::mat2& V)
 {
-    glm::mat2 S;
+    glm::mat2 S(0.0f);
     PolarDecomp(m, U, S);
     float c, s;
-    if (std::abs(S[0][1]) < 1e-6f)
+    if (std::abs(S[1][0]) < 1e-6f)
     {
         sig = S;
         c   = 1;
@@ -402,26 +414,26 @@ void SVD(glm::mat2 m, glm::mat2& U, glm::mat2& sig, glm::mat2& V)
     else
     {
         auto tao  = 0.5f * (S[0][0] - S[1][1]);
-        auto w    = std::sqrt(tao * tao + S[0][1] * S[0][1]);
-        auto t    = tao > 0 ? S[0][1] / (tao + w) : S[0][1] / (tao - w);
+        auto w    = std::sqrt(tao * tao + S[1][0] * S[1][0]);
+        auto t    = tao > 0 ? S[0][1] / (tao + w) : S[1][0] / (tao - w);
         c         = 1.0f / std::sqrt(t * t + 1);
         s         = -t * c;
-        sig[0][0] = std::pow(c, 2.0f) * S[0][0] - 2 * c * s * S[0][1] + std::pow(s, 2.0f) * S[1][1];
-        sig[1][1] = std::pow(s, 2.0f) * S[0][0] + 2 * c * s * S[0][1] + std::pow(c, 2.0f) * S[1][1];
+        sig[0][0] = std::pow(c, 2.0f) * S[0][0] - 2 * c * s * S[1][0] + std::pow(s, 2.0f) * S[1][1];
+        sig[1][1] = std::pow(s, 2.0f) * S[0][0] + 2 * c * s * S[1][0] + std::pow(c, 2.0f) * S[1][1];
     }
     if (sig[0][0] < sig[1][1])
     {
         std::swap(sig[0][0], sig[1][1]);
         V[0][0] = -s;
-        V[0][1] = -c;
-        V[1][0] = c;
+        V[1][0] = -c;
+        V[0][1] = c;
         V[1][1] = -s;
     }
     else
     {
         V[0][0] = c;
-        V[0][1] = -s;
-        V[1][0] = s;
+        V[1][0] = -s;
+        V[0][1] = s;
         V[1][1] = c;
     }
     V = glm::transpose(V);
