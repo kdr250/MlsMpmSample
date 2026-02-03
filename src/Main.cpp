@@ -3,6 +3,7 @@
 
 #include <glm/glm.hpp>
 
+#include <algorithm>
 #include <vector>
 #include <random>
 
@@ -75,6 +76,8 @@ glm::vec2 RandomVec();
 void InitializeMlsMpm();
 void AddObject(const glm::vec2& center, uint32_t color);
 void Advance(float dt);
+void PolarDecomp(glm::mat2 m, glm::mat2& R, glm::mat2& S);
+void SVD(glm::mat2 m, glm::mat2& U, glm::mat2& sig, glm::mat2& V);
 
 int main(int argc, char* argv[])
 {
@@ -252,8 +255,9 @@ void Advance(float dt)
         // current volume
         float J = glm::determinant(p.F);
 
-        // TODO: Polar decomposition for fixed corotated model
+        // Polar decomposition for fixed corotated model
         glm::mat2 r, s;
+        PolarDecomp(p.F, r, s);
 
         // [http://mpm.graphics Paragraph after Eqn. 176]
         float Dinv = 4 * inv_dx * inv_dx;
@@ -348,6 +352,78 @@ void Advance(float dt)
         // Advection
         p.x += dt * p.v;
 
-        // TODO: MLS-MPM F-update
+        // MLS-MPM F-update
+        auto F = (glm::mat2(1) + dt * p.C) * p.F;
+
+        glm::mat2 svd_u, sig, svd_v;
+        SVD(F, svd_u, sig, svd_v);
+
+        // Snow Plasticity
+        for (int i = 0; i < 2 * int(plastic); i++)
+        {
+            sig[i][i] = std::clamp(sig[i][i], 1.0f - 2.5e-2f, 1.0f + 7.5e-3f);
+        }
+
+        float oldJ = glm::determinant(F);
+        F          = svd_u * sig * glm::transpose(svd_v);
+
+        float Jp_new = std::clamp(p.Jp * oldJ / glm::determinant(F), 0.6f, 20.0f);
+
+        p.Jp = Jp_new;
+        p.F  = F;
     }
+}
+
+void PolarDecomp(glm::mat2 m, glm::mat2& R, glm::mat2& S)
+{
+    auto x     = m[0][0] + m[1][1];
+    auto y     = m[1][0] - m[0][1];
+    auto scale = 1.0f / std::sqrt(x * x + y * y);
+    float c    = x * scale;
+    float s    = y * scale;
+    R[0][0]    = c;
+    R[0][1]    = -s;
+    R[1][0]    = s;
+    R[1][1]    = c;
+    S          = glm::transpose(R) * m;
+}
+
+void SVD(glm::mat2 m, glm::mat2& U, glm::mat2& sig, glm::mat2& V)
+{
+    glm::mat2 S;
+    PolarDecomp(m, U, S);
+    float c, s;
+    if (std::abs(S[0][1]) < 1e-6f)
+    {
+        sig = S;
+        c   = 1;
+        s   = 0;
+    }
+    else
+    {
+        auto tao  = 0.5f * (S[0][0] - S[1][1]);
+        auto w    = std::sqrt(tao * tao + S[0][1] * S[0][1]);
+        auto t    = tao > 0 ? S[0][1] / (tao + w) : S[0][1] / (tao - w);
+        c         = 1.0f / std::sqrt(t * t + 1);
+        s         = -t * c;
+        sig[0][0] = std::pow(c, 2.0f) * S[0][0] - 2 * c * s * S[0][1] + std::pow(s, 2.0f) * S[1][1];
+        sig[1][1] = std::pow(s, 2.0f) * S[0][0] + 2 * c * s * S[0][1] + std::pow(c, 2.0f) * S[1][1];
+    }
+    if (sig[0][0] < sig[1][1])
+    {
+        std::swap(sig[0][0], sig[1][1]);
+        V[0][0] = -s;
+        V[0][1] = -c;
+        V[1][0] = c;
+        V[1][1] = -s;
+    }
+    else
+    {
+        V[0][0] = c;
+        V[0][1] = -s;
+        V[1][0] = s;
+        V[1][1] = c;
+    }
+    V = glm::transpose(V);
+    U = U * V;
 }
