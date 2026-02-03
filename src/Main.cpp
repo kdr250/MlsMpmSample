@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <vector>
 #include <random>
-#include <iostream>
 
 #ifdef __EMSCRIPTEN__
     #include <emscripten.h>
@@ -55,7 +54,7 @@ struct Particle
     uint32_t c;
 
     Particle(glm::vec2 x, uint32_t c, glm::vec2 v = glm::vec2(0)) :
-        x(x), v(v), F(1, 1, 1, 1), C(0), Jp(1), c(c)
+        x(x), v(v), F(1), C(0), Jp(1), c(c)
     {
     }
 };
@@ -215,12 +214,6 @@ void InitializeMlsMpm()
     AddObject(glm::vec2(0.55, 0.45), 0xFF0000FF);
     AddObject(glm::vec2(0.45, 0.65), 0x00FF00FF);
     AddObject(glm::vec2(0.55, 0.85), 0x0000FFFF);
-
-    for (int i = 0; i < particles.size(); ++i)
-    {
-        auto& p = particles[i];
-        std::cout << "particle " << i << ": { " << p.x.x << ", " << p.x.y << " }" << std::endl;
-    }
 }
 
 void AddObject(const glm::vec2& center, uint32_t color)
@@ -334,9 +327,11 @@ void Advance(float dt)
         glm::ivec2 ibase_coord = (p.x * inv_dx - glm::vec2(0.5f));
         glm::vec2 base_coord((float)ibase_coord.x, (float)ibase_coord.y);
         glm::vec2 fx   = p.x * inv_dx - base_coord;
-        glm::vec2 w[3] = {glm::vec2(0.5) * glm::sqrt(glm::vec2(1.5) - fx),
-                          glm::vec2(0.75) - glm::sqrt(fx - glm::vec2(1.0)),
-                          glm::vec2(0.5) * glm::sqrt(fx - glm::vec2(0.5))};
+        glm::vec2 w[3] = {
+            glm::vec2(0.5) * glm::pow(glm::vec2(1.5) - fx, glm::vec2(2.0f)),
+            glm::vec2(0.75) - glm::pow(fx - glm::vec2(1.0), glm::vec2(2.0f)),
+            glm::vec2(0.5) * glm::pow(fx - glm::vec2(0.5), glm::vec2(2.0f)),
+        };
 
         p.C = glm::mat2(0);
         p.v = glm::vec2(0);
@@ -378,12 +373,6 @@ void Advance(float dt)
         p.Jp = Jp_new;
         p.F  = F;
     }
-
-    for (int i = 0; i < particles.size(); ++i)
-    {
-        auto& p = particles[i];
-        std::cout << "particle " << i << ": { " << p.x.x << ", " << p.x.y << " }" << std::endl;
-    }
 }
 
 void PolarDecomp(glm::mat2 m, glm::mat2& R, glm::mat2& S)
@@ -415,7 +404,7 @@ void SVD(glm::mat2 m, glm::mat2& U, glm::mat2& sig, glm::mat2& V)
     {
         auto tao  = 0.5f * (S[0][0] - S[1][1]);
         auto w    = std::sqrt(tao * tao + S[1][0] * S[1][0]);
-        auto t    = tao > 0 ? S[0][1] / (tao + w) : S[1][0] / (tao - w);
+        auto t    = tao > 0 ? S[1][0] / (tao + w) : S[1][0] / (tao - w);
         c         = 1.0f / std::sqrt(t * t + 1);
         s         = -t * c;
         sig[0][0] = std::pow(c, 2.0f) * S[0][0] - 2 * c * s * S[1][0] + std::pow(s, 2.0f) * S[1][1];
