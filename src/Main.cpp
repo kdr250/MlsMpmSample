@@ -54,7 +54,7 @@ struct Particle
     uint32_t c;
 
     Particle(glm::vec2 x, uint32_t c, glm::vec2 v = glm::vec2(0)) :
-        x(x), v(v), F(1), C(0), Jp(1), c(c)
+        x(x), v(v), F(1.0f), C(0), Jp(1), c(c)
     {
     }
 };
@@ -355,7 +355,7 @@ void Advance(float dt)
         p.x += dt * p.v;
 
         // MLS-MPM F-update
-        auto F = (glm::mat2(1, 1, 1, 1) + dt * p.C) * p.F;
+        auto F = (glm::mat2(1.0f) + dt * p.C) * p.F;
 
         glm::mat2 svd_u(0.0f), sig(0.0f), svd_v(0.0f);
         SVD(F, svd_u, sig, svd_v);
