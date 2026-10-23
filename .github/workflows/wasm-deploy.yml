@@ -1,0 +1,58 @@
+name: wasm-deploy
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+env:
+  EM_VERSION: 3.1.74
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup vcpkg
+        shell: bash
+        run: |
+          echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> $GITHUB_ENV
+          current_dir=$PWD
+          cd $VCPKG_INSTALLATION_ROOT
+          git reset --hard HEAD
+          git pull origin master
+          cd $current_dir
+
+      - name: Setup Ninja
+        uses: seanmiddleditch/gha-setup-ninja@master
+
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: ${{env.EM_VERSION}}
+          actions-cache-folder: ${{env.EM_CACHE_FOLDER}}
+
+      - name: Build
+        run: |
+          emcmake cmake -B build-web -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -G Ninja &&
+          cmake --build build-web --config ${{env.BUILD_TYPE}}
+
+      - name: Output
+        run: |
+          mkdir public &&
+          mv build-web/main.html public/index.html &&
+          mv build-web/main.data public/main.data &&
+          mv build-web/main.js public/main.js &&
+          mv build-web/main.wasm public/main.wasm
+
+      - name: Deploy
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
